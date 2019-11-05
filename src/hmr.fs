@@ -48,9 +48,9 @@ module Program =
         | Active of 'model
 
     /// Start the dispatch loop with `'arg` for the init() function.
-    let inline runWith (arg: 'arg) (program: Program<'arg, 'model, 'msg, 'view>) =
+    let inline runWith syncDispatch (arg: 'arg) (program: Program<'arg, 'model, 'msg, 'view>) =
 #if !DEBUG
-        Program.runWith arg program
+        Program.runWith syncDispatch arg program
 #else
         let mutable hmrState : obj = null
         let hot = HMR.``module``.hot
@@ -121,6 +121,17 @@ module Program =
                 Cmd.batch [ subscribe userModel |> Cmd.map UserMsg
                             hmrSubscription ]
 
+        let mapTermination (predicate, terminate) =
+            function
+                | UserMsg msg -> predicate msg
+                | Stop -> true
+            , fun (model : Model<'model>) ->
+                Internal.saveState null hmrState
+                match model with
+                | Inactive -> ()
+                | Active model ->
+                    terminate model
+
         let mapView view =
             // This function will never be executed because we are using a local reference to access `program.view`.
             // For example,
@@ -149,8 +160,8 @@ You should not see this message
                     view userModel (UserMsg >> dispatch)
 
         program
-        |> Program.map mapInit mapUpdate mapView mapSetState mapSubscribe
-        |> Program.runWith arg
+        |> Program.map mapInit mapUpdate mapView mapSetState mapSubscribe mapTermination
+        |> Program.runWith syncDispatch arg
 #endif
 
     /// Start the dispatch loop with `unit` for the init() function.
@@ -158,7 +169,7 @@ You should not see this message
 #if !DEBUG
         Program.run program
 #else
-        runWith () program
+        runWith id () program
 #endif
 
     (*
